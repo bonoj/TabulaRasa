@@ -39,7 +39,7 @@ jobs:
           if [ -n "$DISPATCH_CANDIDATE" ]; then
             CANDIDATE="$DISPATCH_CANDIDATE"
           elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            CANDIDATE="$(curl --fail --silent --show-error --location "https://bonoj.github.io/Crucible/PREVIEW_SOURCE_COMMIT" | tr -d '[:space:]')"
+            CANDIDATE="$(curl --fail --silent --show-error --location "https://bonoj.github.io/TabulaRasa/PREVIEW_SOURCE_COMMIT" | tr -d '[:space:]')"
           else
             CANDIDATE="$(tr -d '[:space:]' < .promotion/candidate)"
           fi
