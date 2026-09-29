@@ -1,149 +1,184 @@
-# Clone and Deployment Handoff
+# Model-Operated Clone and Deployment Protocol
 
-This records the proven path for creating a new executable descendant while preserving working ancestry.
+## Operator contract
 
-The goal is not to reconstruct architecture from prose. Clone a living executable substrate, prove which source commit is authoritative, publish that exact source as an inspectable candidate, promote those exact bytes, then continue through repository writes without requiring the human to operate GitHub.
+**This document is for the model operating the repository, not for the human to execute as a checklist.**
 
-## 1. Clone executable ancestry, not history
+The model is the deployment operator. The human supplies intent, experiences executable previews, and accepts or rejects what they see.
 
-Create or choose the destination repository. Copy the current source tree from the chosen source repository into it as a fresh snapshot. Do not replay experimental history and do not reconstruct the project from documentation.
+Perform every repository, source, build, verification, diagnosis, and promotion operation available through your tools yourself.
 
-The destination's first meaningful commit should contain the source tree intended to become its new ancestry.
+Do not ask the human to:
+
+- determine HEAD;
+- inspect or copy SHAs;
+- shuttle files;
+- edit workflow YAML;
+- choose deployment mechanisms;
+- diagnose Actions;
+- manually promote ordinary releases.
+
+When a GitHub UI action is genuinely unavailable through your tools, ask for exactly that smallest action, explain where to tap, wait for confirmation, verify its effect yourself, and immediately resume operation.
+
+Bootstrap is complete only when the new repository's live URL serves the same executable the human accepted in preview.
+
+After bootstrap, deployment should be model-operated end to end.
+
+## Phase 0 — Prove the source before cloning
+
+**No accepted source preview means no clone.**
+
+Do not clone a repository merely because its current Git HEAD appears to be current. Source HEAD, root `index.html`, preview, and live may represent different moments.
+
+Before copying anything:
+
+1. identify the source repository's intended source HEAD;
+2. inspect the buildable source rather than trusting root `index.html`;
+3. ensure a candidate is built from that exact HEAD;
+4. ensure that candidate is published at the source repository's `/preview/`;
+5. verify the preview's embedded build identity matches the intended HEAD;
+6. ask the human only the experiential question: **"Is this the world you want to clone?"**
+7. clone only after the human accepts that preview.
+
+If the source preview is absent, stale, or built from the wrong HEAD, repair that before cloning.
+
+If the correct candidate build exists but did not publish because Pages was enabled later or a workflow did not run, rerun/dispatch the candidate build yourself when tooling permits. If workflow dispatch is unavailable through your tools, give the human the single minimal action required to rerun **Build candidate**, then verify the resulting preview yourself.
+
+The pre-clone authority chain is:
+
+**intended source HEAD → immutable candidate → source preview → human acceptance**
+
+Only the accepted source bytes become ancestry.
+
+## Phase 1 — Clone executable ancestry
+
+Create or choose the destination repository. Copy the accepted source tree into it as a fresh snapshot. Do not replay experimental history and do not reconstruct architecture from documentation.
 
 Important distinction:
 
 - `src/**`, `tools/**`, package files, and workflows are buildable source.
-- root `index.html` is the last promoted stable release artifact.
-- root `index.html` may therefore be older than source HEAD.
-- Never infer current source state from root `index.html`.
+- root `index.html` is a promoted stable release artifact and may be older than source.
+- never infer current source state from root `index.html`.
 
-After copying, compare important source blobs in the destination against the intended source HEAD. At minimum verify `src/main.js`, `src/runtime/**`, `src/shell.html`, `src/styles.css`, `tools/build.mjs`, `package.json`, and deployment workflows. Matching Git blob SHAs prove matching bytes.
+Compare important destination source blobs against the accepted source HEAD. At minimum verify `src/main.js`, `src/runtime/**`, `src/shell.html`, `src/styles.css`, `tools/build.mjs`, `package.json`, and deployment workflows. Matching Git blob SHAs prove matching bytes.
 
-Record the destination commit SHA. This is the candidate identity.
+Record the destination commit SHA as the new repository's candidate identity.
 
-## 2. Fix repository-specific deployment seams
+## Phase 2 — Repair repository-specific seams
 
-Inspect inherited workflows after cloning for repository-specific URLs or assumptions.
+Inspect inherited workflows for ancestor-specific URLs or assumptions.
 
-In particular, `.github/workflows/promote-candidate.yml` must recover preview identity from the destination repository's Pages URL, not the ancestor repository.
+In particular, `.github/workflows/promote-candidate.yml` must recover preview identity from the destination repository's Pages URL, not the ancestor's URL.
 
 For this repository:
 
 `https://bonoj.github.io/TabulaRasa/PREVIEW_SOURCE_COMMIT`
 
-Inherited internal names such as `Crucible`, `__CRUCIBLE_BUILD__`, or `crucible-candidate-...` do not require cosmetic renaming. They are harmless ancestry unless they cause a real routing or deployment error.
+Inherited internal names such as `Crucible`, `__CRUCIBLE_BUILD__`, or `crucible-candidate-...` do not require cosmetic renaming unless they cause an actual routing or deployment error.
 
-## 3. One-time Pages bootstrap
+## Phase 3 — One-time Pages bootstrap
 
-A new repository may need one human repository-setting action:
+A newly created destination may require one unavoidable human repository-setting action because copying workflows does not configure GitHub Pages.
 
-**Settings → Pages → Source: GitHub Actions**
+If your tools cannot change the Pages source, instruct the human only:
 
-Copying workflow files does not establish this repository setting.
+**Repository → Settings → Pages → Source: GitHub Actions**
 
-Once Pages uses GitHub Actions, ordinary deployment should not require the human to touch GitHub again.
+Ask them to tell you when it is done. Then verify deployment behavior yourself.
 
-## 4. Build the candidate from the correct HEAD
+Do not teach the human the rest of the deployment machinery.
 
-`Build candidate` runs automatically when buildable source changes on `main`.
+## Phase 4 — Establish the destination preview
 
-It checks out the triggering source commit, installs dependencies, runs the build, produces self-contained `dist/index.html`, verifies it, and uploads it as an immutable artifact named for the source commit SHA.
+Build the destination candidate from the correct destination HEAD.
 
-The source SHA is embedded in the HTML as its build identity.
+`Build candidate` checks out the triggering source commit, installs dependencies, runs the build, produces self-contained `dist/index.html`, verifies it, and uploads an immutable artifact named for the source commit SHA. The source SHA is embedded in the HTML as build identity.
 
-Do not substitute root `index.html`. Candidate construction must come from source.
+A successful candidate build triggers `Publish Pages`, which exposes:
 
-## 5. Preview before promotion
+- `/` — currently promoted stable root;
+- `/preview/` — immutable candidate;
+- `/preview/SOURCE_COMMIT`;
+- `/PREVIEW_SOURCE_COMMIT`.
 
-A successful candidate build triggers `Publish Pages`.
+Inspect the destination `/preview/` yourself and verify its identity matches the intended destination HEAD.
 
-Pages contains:
+If preview is wrong, stop. Diagnose HEAD/build/publication identity. Do not promote and do not ask the human to reason about SHAs.
 
-- `/` — currently promoted stable root `index.html`
-- `/preview/` — newly built immutable candidate
-- `/preview/SOURCE_COMMIT`
-- `/PREVIEW_SOURCE_COMMIT`
+If Pages was enabled after the clone push and the correct build never ran/published, rerun **Build candidate** yourself when possible. If dispatch is unavailable, ask the human for only that rerun action, then resume verification.
 
-Inspect:
+Once identity is correct, ask the human to inspect the preview and answer only whether it is the intended world.
 
-`https://bonoj.github.io/TabulaRasa/preview/`
+A green workflow is not acceptance. The executable is.
 
-The visible build identity must match the intended source commit SHA.
+## Phase 5 — First promotion bootstrap
 
-Do not treat a green Actions run as proof that the correct world is in preview. Inspect the executable and its identity.
+Once the destination preview is accepted, promote those exact bytes. Never rebuild an accepted candidate merely to promote it.
 
-Root and preview are intentionally allowed to differ here. Preview is the candidate; root is the last accepted stable release.
-
-## 6. Promote exact accepted bytes
-
-Once preview is accepted, promote the candidate artifact itself. Do not rebuild it and do not copy source into root by hand.
-
-Normal model-operated path:
+Preferred model-operated path:
 
 1. write the accepted 40-character source SHA to `.promotion/candidate`;
-2. commit that file to `main`;
+2. commit it to `main`;
 3. `Promote candidate` triggers automatically;
-4. it finds the immutable artifact for that SHA;
-5. it downloads that exact artifact;
-6. it verifies the SHA is embedded in the HTML;
-7. it copies those exact bytes to root `index.html`;
-8. it commits the stable release;
-9. it triggers `Publish Pages` for the accepted candidate.
+4. it finds and downloads the immutable artifact for that SHA;
+5. it verifies the embedded identity;
+6. it copies those exact bytes to root `index.html`;
+7. it commits the stable release;
+8. it triggers Pages publication.
 
-This means promotion does not require the human to press **Run workflow**.
+If the automatic promotion path has not yet been established or cannot be triggered with available tools, the first promotion has a manual bootstrap escape hatch:
 
-Manual `workflow_dispatch` is a bootstrap/debug fallback, not the steady-state procedure.
+**Actions → Promote candidate → Run workflow → paste the full accepted preview SHA → Run workflow**
 
-## 7. Verify live independently
+The model must supply the exact SHA. The human should not discover or validate it.
 
-After promotion completes, inspect:
+After this first bootstrap, use `.promotion/candidate`; do not make manual workflow dispatch the normal procedure.
 
-`https://bonoj.github.io/TabulaRasa/`
+## Phase 6 — Verify live independently
 
-The live build identity must match the accepted candidate SHA. Also verify that `/preview/` identifies the intended candidate.
+After promotion, inspect the destination live root yourself.
 
-Do not conclude live is correct merely because promotion committed, Actions passed, root `index.html` changed, or a Pages artifact exists. The public executable identity is the final check.
+The visible live build identity must match the accepted preview SHA.
 
-If preview is correct but live appears old:
+Do not declare success merely because promotion committed, Actions passed, root `index.html` changed, or a Pages artifact exists.
 
-1. inspect root `index.html` at the promoted commit;
-2. download/inspect the exact `github-pages` artifact from the successful Pages run;
-3. verify root and preview files and embedded SHAs;
-4. only then distinguish workflow/payload failure from stale Pages/CDN/browser serving.
+If preview is correct but live appears old, trace the chain:
 
-A cache-busting query can test serving without mutating the release:
+1. promoted root `index.html`;
+2. exact `github-pages` artifact from the successful Pages run;
+3. embedded identities in root and preview payloads;
+4. public serving behavior.
 
-`https://bonoj.github.io/TabulaRasa/?release=<accepted-sha>`
+Only after proving the payload is correct should you diagnose stale Pages/CDN/browser serving. A cache-busting query such as `?release=<accepted-sha>` can test that layer without mutating the release.
 
-Do not perturb correct source or rebuild a correct candidate merely to chase serving-layer cache.
+Do not perturb correct source to chase a serving-layer cache.
 
-## 8. Steady state: human touches nothing
+## Phase 7 — Steady state: human touches nothing
 
-After one-time repository/Pages bootstrap, the intended loop is:
+After bootstrap, the operating loop is:
 
-**model edits source → commit/push → candidate builds automatically → preview publishes automatically → executable is inspected → accepted SHA is written to `.promotion/candidate` → promotion runs automatically → exact candidate bytes become stable → Pages publishes automatically → model verifies live identity**
+**model edits source → commit/push → candidate builds → preview publishes → model verifies identity → human experiences preview → human accepts/rejects → model writes accepted SHA to `.promotion/candidate` → exact bytes promote → Pages publishes → model verifies live**
 
-The human's role is experiential and semantic: use the world, react to it, accept/reject it, change direction.
+The human's job is to interact with the project and make semantic decisions.
 
-The human should not need to shuttle files, build locally, edit workflow YAML, copy HTML, press Actions buttons, type candidate SHAs into forms, or manually promote releases.
+The model's job is to operate the machinery.
 
-The model should operate the machinery through repository writes and workflow inspection.
+If an external permission or repository setting genuinely requires human interaction, surface only that atomic action. Once completed, take control of the procedure again.
 
-If a repository-level permission or setting cannot be changed through the available GitHub connection, surface that single unavoidable human action explicitly. Do not turn ordinary deployment into a human procedure.
+## Deployment provenance
 
-## 9. Deployment provenance
+Never repair identity disagreements by guessing. Trace:
 
-Trace identities rather than guessing:
+**source HEAD → immutable candidate → preview → accepted SHA → promoted root → Pages artifact → live URL**
 
-**source commit → immutable candidate artifact → preview → accepted SHA → promoted root → Pages artifact → live URL**
-
-Authority at each layer:
+Authority:
 
 1. intended source HEAD says what should be built;
 2. immutable candidate says what was previewed;
-3. accepted SHA says what may be promoted;
-4. promoted root must be byte-identical to that candidate;
-5. Pages artifact must contain those promoted bytes;
-6. public live executable identity is the final serving check.
+3. human acceptance authorizes that candidate;
+4. accepted SHA identifies what may be promoted;
+5. promoted root must be byte-identical to the accepted candidate;
+6. Pages artifact must contain those bytes;
+7. public live executable identity is the final serving check.
 
-That chain is the deployment provenance.
+That chain is deployment provenance.
