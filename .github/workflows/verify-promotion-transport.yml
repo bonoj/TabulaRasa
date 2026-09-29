@@ -1,0 +1,64 @@
+name: Verify promotion transport
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate:
+        description: "40-character source commit SHA of an existing candidate"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Validate candidate identity
+        id: candidate
+        env:
+          CANDIDATE: ${{ inputs.candidate }}
+        run: |
+          [[ "$CANDIDATE" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$CANDIDATE" >> "$GITHUB_OUTPUT"
+
+      - name: Find immutable candidate artifact
+        id: artifact
+        uses: actions/github-script@v7
+        env:
+          CANDIDATE: ${{ steps.candidate.outputs.sha }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const name = `crucible-candidate-${process.env.CANDIDATE}`;
+            const artifacts = await github.paginate(
+              github.rest.actions.listArtifactsForRepo,
+              { owner, repo, name, per_page: 100 }
+            );
+            const artifact = artifacts.find(a => !a.expired && a.name === name);
+            if (!artifact) core.setFailed(`No live immutable artifact named ${name}`);
+            core.setOutput("id", artifact.id);
+            core.setOutput("digest", artifact.digest || "");
+
+      - name: Download exact candidate across workflow boundary
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.artifact.outputs.id }}
+        run: |
+          mkdir -p accepted
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" > candidate.zip
+          unzip -q candidate.zip -d accepted
+          test -s accepted/index.html
+
+      - name: Verify candidate bytes
+        env:
+          CANDIDATE: ${{ steps.candidate.outputs.sha }}
+          ARTIFACT_DIGEST: ${{ steps.artifact.outputs.digest }}
+        run: |
+          grep -Fq "$CANDIDATE" accepted/index.html
+          sha256sum accepted/index.html
+          echo "Artifact digest: $ARTIFACT_DIGEST"
+          echo "Transport verified; stable index.html was not read or written."

@@ -1,0 +1,19 @@
+export function createMeteorSystem({world,components,THREE,scene,terrain,locus,onImpact=()=>{}}){
+ const {Transform,RenderObject,Meteor,MeteorShower,Body,Locus}=components; let serial=0;
+ const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+ class RNG{constructor(s=1){this.s=s>>>0||1}next(){let x=this.s;x^=x<<13;x^=x>>>17;x^=x<<5;this.s=x>>>0;return this.s/4294967296}}
+ const targetAt=(x=0,z=0)=>{const h=terrain.terrainHeight(x,z);return new THREE.Vector3(x,Number.isFinite(h)?h:terrain.groundHeight(x,z),z)};
+ function dispose(o){scene.remove(o);o.geometry?.dispose?.();if(Array.isArray(o.material))o.material.forEach(m=>m.dispose?.());else o.material?.dispose?.()}
+ function launch(target=targetAt(),power=1){const r=new RNG(((++serial+17)*991)>>>0),start=target.clone().add(new THREE.Vector3((r.next()-.5)*2.4,10+r.next()*3.2,(r.next()-.5)*2.4)),id=world.entity();
+  const head=new THREE.Mesh(new THREE.SphereGeometry(.28,7,5),new THREE.MeshBasicMaterial({color:0xffd08a})),trail=new THREE.Line(new THREE.BufferGeometry().setFromPoints([start,start.clone().lerp(target,.22)]),new THREE.LineBasicMaterial({color:0xff7b42,transparent:true,opacity:.78,depthWrite:false,blending:THREE.AdditiveBlending}));scene.add(head,trail);
+  world.add(id,Transform,{position:start.clone(),rotation:new THREE.Euler(),scale:new THREE.Vector3(1,1,1),visible:true});world.add(id,RenderObject,{object:head});world.add(id,Meteor,{start,target:target.clone(),power,born:performance.now(),life:300+r.next()*100,trail});if(Locus)world.add(id,Locus,{id:locus});return id}
+ function impulse(center,power){for(const id of world.query(Transform,Body)){if(Meteor.has(id))continue;const t=Transform.get(id);if(!t.velocity)continue;const d=t.position.clone().sub(center),dist=Math.max(.25,d.length());if(dist>3.2)continue;d.y=Math.max(.45,d.y+.7);d.normalize();t.velocity.addScaledVector(d,Math.max(0,3.8*power*(1-dist/3.4)))}}
+ function removeMeteor(id){const m=Meteor.get(id),ro=RenderObject.get(id);if(m)dispose(m.trail);if(ro?.object)dispose(ro.object);world.destroy(id)}
+ function impact(id,point,power,canChangeTerrain){if(canChangeTerrain)terrain.impact(point,{magnitude:power});impulse(point,power);onImpact({point:point.clone(),magnitude:power,terrainChanged:canChangeTerrain});removeMeteor(id)}
+ function meteor(center=targetAt(),power=1){return launch(center,power)}
+ function meteors(center=targetAt()){const id=world.entity(),r=new RNG((++serial*2246822519)>>>0),delays=[];let total=0;for(let i=0;i<9;i++){const d=170+r.next()*330;delays.push(d);total+=d}const scale=2900/Math.max(1,total);delays.forEach((d,i)=>delays[i]=d*scale);world.add(id,MeteorShower,{center:center.clone(),remaining:10,next:performance.now()+80,rng:r,delays,index:0});if(Locus)world.add(id,Locus,{id:locus});return id}
+ function update(now){for(const id of world.query(Transform,Meteor)){const t=Transform.get(id),m=Meteor.get(id),u=clamp((now-m.born)/m.life,0,1),e=1-Math.pow(1-u,2),prev=t.position.clone(),next=m.start.clone().lerp(m.target,e),hit=terrain.segmentApparatusHit(prev,next);if(hit){t.position.copy(hit.point);impact(id,hit.point,m.power,false);continue}t.position.copy(next);m.trail.geometry.setFromPoints([m.start.clone().lerp(m.target,Math.max(0,e-.16)),next]);m.trail.material.opacity=.78*(1-u*.45);if(u>=1)impact(id,m.target,m.power,true)}
+  for(const id of world.query(MeteorShower)){const s=MeteorShower.get(id);if(now<s.next)continue;const a=s.rng.next()*Math.PI*2,rr=Math.sqrt(s.rng.next())*1.15,x=s.center.x+Math.cos(a)*rr,z=s.center.z+Math.sin(a)*rr,p=terrain.insideMaterial(x,z)?targetAt(x,z):targetAt(s.center.x,s.center.z);launch(p,.38);s.remaining--;if(s.remaining<=0)world.destroy(id);else s.next=now+s.delays[s.index++]}
+ }
+ return{meteor,meteors,launch,targetAt,update,inspect:()=>({falling:world.query(Meteor).length,showers:world.query(MeteorShower).length})}
+}

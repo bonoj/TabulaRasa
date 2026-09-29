@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="Crucible — a conversationally grown physical world."><title>Crucible</title>
+<!-- CRUCIBLE:STYLE --></head>
+<body><main id="world" aria-label="Crucible world. Drag to orbit; pinch or use the mouse wheel to change distance."></main>
+<aside id="mark"><b>⚗️ CRUCIBLE</b></aside>
+<aside id="debug-tools" aria-label="Construction controls">
+  <output id="fps-counter" aria-label="Frames per second">fps …</output>
+  <output id="build-id">build …</output>
+  <span id="impact-buckets" aria-label="Impact magnitude">
+    <button type="button" data-impact-bucket aria-label="Impact magnitude 1">1</button><button type="button" data-impact-bucket aria-label="Impact magnitude 2">2</button><button type="button" data-impact-bucket aria-label="Impact magnitude 3">3</button><button type="button" data-impact-bucket aria-label="Impact magnitude 4">4</button>
+  </span>
+  <button id="call-meteor" type="button" aria-label="Call meteor">☄</button>
+  <button id="toggle-water" type="button" aria-label="Toggle water">💧</button>
+  <button id="randomize-terrain" type="button" aria-label="Randomize terrain">⛰️</button>
+  <button id="debug-refresh" type="button" aria-label="Refresh">↻</button>
+</aside>
+<pre id="diagnostics" role="alert" hidden></pre>
+<script>globalThis.__CRUCIBLE_BUILD__="{{BUILD_COMMIT}}";</script>
+<!-- CRUCIBLE:SCRIPT --></body></html>

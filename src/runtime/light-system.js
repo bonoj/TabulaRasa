@@ -1,0 +1,7 @@
+export function createLightSystem({world,components,three}) {
+  const {Transform,Light,LightView}=components;
+  function realize(id){const spec=Light.get(id);let light=LightView.get(id)?.light;if(light)return light;if(spec.kind==="hemisphere")light=new three.THREE.HemisphereLight(spec.color,spec.groundColor,spec.intensity);else if(spec.kind==="ambient")light=new three.THREE.AmbientLight(spec.color,spec.intensity);else light=new three.THREE.DirectionalLight(spec.color,spec.intensity);light.castShadow=Boolean(spec.castShadow);three.scene.add(light);world.add(id,LightView,{light});return light;}
+  function syncAll(){for(const id of world.query(Light,Transform)){const spec=Light.get(id),t=Transform.get(id),light=realize(id);light.color?.setHex(spec.color);light.intensity=spec.intensity;if(light.groundColor&&spec.groundColor!=null)light.groundColor.setHex(spec.groundColor);if(t.position)light.position.copy(t.position);}}
+  function inspect(){return world.query(Light,Transform).map(id=>{const s=Light.get(id),t=Transform.get(id);return{id,name:s.name,kind:s.kind,intensity:s.intensity,position:t.position?.toArray().map(n=>Number(n.toFixed(2)))??null,realizedAs:LightView.get(id)?.light?.type??null};});}
+  return {syncAll,inspect};
+}

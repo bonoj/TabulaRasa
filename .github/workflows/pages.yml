@@ -1,0 +1,125 @@
+name: Publish Pages
+
+on:
+  workflow_run:
+    workflows: ["Build candidate"]
+    types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - "index.html"
+      - ".github/workflows/pages.yml"
+      - ".github/workflows/promote-candidate.yml"
+  workflow_dispatch:
+    inputs:
+      candidate:
+        description: "Optional candidate SHA to publish at /preview/; blank keeps the latest successful candidate"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: crucible-pages
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    if: >
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Resolve stable and candidate identities
+        id: refs
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CANDIDATE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          echo "stable_ref=main" >> "$GITHUB_OUTPUT"
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            echo "candidate_sha=$CANDIDATE_SHA" >> "$GITHUB_OUTPUT"
+            echo "candidate_run=${{ github.event.workflow_run.id }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "candidate_sha=" >> "$GITHUB_OUTPUT"
+            echo "candidate_run=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Recover preview identity for non-build publication
+        if: steps.refs.outputs.candidate_run == ''
+        id: recover
+        uses: actions/github-script@v7
+        env:
+          REQUESTED_CANDIDATE: ${{ inputs.candidate }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            let sha = process.env.REQUESTED_CANDIDATE || "";
+            if (!sha) {
+              const runs = await github.paginate(
+                github.rest.actions.listWorkflowRuns,
+                { owner, repo, workflow_id: "build-candidate.yml", status: "success", per_page: 100 }
+              );
+              const run = runs.find(r => r.head_branch === "main");
+              if (!run) core.setFailed("No successful candidate build found");
+              sha = run.head_sha;
+              core.setOutput("run", String(run.id));
+            } else {
+              const runs = await github.paginate(
+                github.rest.actions.listWorkflowRuns,
+                { owner, repo, workflow_id: "build-candidate.yml", head_sha: sha, status: "success", per_page: 100 }
+              );
+              const run = runs[0];
+              if (!run) core.setFailed(`No successful candidate build found for ${sha}`);
+              core.setOutput("run", String(run.id));
+            }
+            core.setOutput("sha", sha);
+
+      - name: Checkout stable release
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.refs.outputs.stable_ref }}
+          path: repo
+
+      - name: Assemble Pages surface
+        run: |
+          mkdir -p site
+          test -s repo/index.html
+          cp repo/index.html site/index.html
+
+      - name: Download exact candidate artifact
+        if: (steps.refs.outputs.candidate_run != '' || steps.recover.outputs.run != '')
+        uses: actions/download-artifact@v4
+        with:
+          name: crucible-candidate-${{ steps.refs.outputs.candidate_sha || steps.recover.outputs.sha }}
+          path: site/preview
+          run-id: ${{ steps.refs.outputs.candidate_run || steps.recover.outputs.run }}
+          github-token: ${{ github.token }}
+
+      - name: Preserve preview identity
+        if: (steps.refs.outputs.candidate_run != '' || steps.recover.outputs.run != '')
+        env:
+          CANDIDATE_SHA: ${{ steps.refs.outputs.candidate_sha || steps.recover.outputs.sha }}
+        run: |
+          test -s site/preview/index.html
+          printf '%s\n' "$CANDIDATE_SHA" > site/preview/SOURCE_COMMIT
+          printf '%s\n' "$CANDIDATE_SHA" > site/PREVIEW_SOURCE_COMMIT
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages surface
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

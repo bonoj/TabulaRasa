@@ -1,0 +1,101 @@
+name: Promote candidate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".promotion/candidate"
+  workflow_dispatch:
+    inputs:
+      candidate:
+        description: "Optional 40-character source commit SHA; blank promotes the candidate currently deployed at /preview/"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: crucible-promotion
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Resolve accepted candidate
+        id: candidate
+        env:
+          DISPATCH_CANDIDATE: ${{ inputs.candidate }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ -n "$DISPATCH_CANDIDATE" ]; then
+            CANDIDATE="$DISPATCH_CANDIDATE"
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            CANDIDATE="$(curl --fail --silent --show-error --location "https://bonoj.github.io/Crucible/PREVIEW_SOURCE_COMMIT" | tr -d '[:space:]')"
+          else
+            CANDIDATE="$(tr -d '[:space:]' < .promotion/candidate)"
+          fi
+          [[ "$CANDIDATE" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$CANDIDATE" >> "$GITHUB_OUTPUT"
+
+      - name: Find immutable candidate artifact
+        id: artifact
+        uses: actions/github-script@v7
+        env:
+          CANDIDATE: ${{ steps.candidate.outputs.sha }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const name = `crucible-candidate-${process.env.CANDIDATE}`;
+            const artifacts = await github.paginate(
+              github.rest.actions.listArtifactsForRepo,
+              { owner, repo, name, per_page: 100 }
+            );
+            const artifact = artifacts.find(a => !a.expired && a.name === name);
+            if (!artifact) core.setFailed(`No live immutable artifact named ${name}`);
+            core.setOutput("id", artifact.id);
+
+      - name: Download exact candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.artifact.outputs.id }}
+        run: |
+          mkdir -p accepted
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}/zip" > candidate.zip
+          unzip -q candidate.zip -d accepted
+          test -s accepted/index.html
+
+      - name: Promote exact bytes
+        env:
+          CANDIDATE: ${{ steps.candidate.outputs.sha }}
+        run: |
+          test -s accepted/index.html
+          grep -Fq "$CANDIDATE" accepted/index.html
+          cp accepted/index.html index.html
+          cmp --silent accepted/index.html index.html
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          if git diff --cached --quiet; then
+            echo "Candidate is already stable."
+            exit 0
+          fi
+          git commit -m "Promote candidate $CANDIDATE"
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Publish promoted stable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE: ${{ steps.candidate.outputs.sha }}
+        run: |
+          gh workflow run pages.yml --ref main -f candidate="$CANDIDATE"
